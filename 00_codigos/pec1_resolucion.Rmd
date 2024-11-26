@@ -1,0 +1,440 @@
+---
+title: "Predicción de interacción entre péptido y el complejo mayor de histocompatibilidad tipo I"
+author: "Eva Cano Gallego"
+date: '2022-03-25'
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    theme: cosmo
+bibliography: biblio.bib
+csl: apa.csl
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Algoritmo k-NN
+
+*1. Escribir en el informe una sección con el título "Algoritmo k-NN" en el que se haga una breve explicación de su funcionamiento y sus características. Además, se presente una tabla de sus fortaleza y debilidades*
+
+## Funcionamiento y características
+
+Los clasificadores k-NN se caracterizan por clasificar muestras segun sus cualidades o características asignandoles la clase de las muestras de clase conocida con las que presenten más similitud. 
+
+El funcionamiento de este tipo de algoritmos se inicia a partir de un conjunto de **datos de entrenamiento** formado por muestras de clase conocida, y un conjunto de **datos de testeo** formado por muestras de caracteristicas similares, pero sin clasificar. 
+
+El algoritmo calcula la **distancia Euclideana** entre las muestras a testear y las muestras conocidas analizando sus caracteristicas, y clasifica las muestras de testeo segun las muestras de entrenamiento más cercanas. Para realizar esta clasificación se utiliza el valor **"k"**, el cual corresponde al numero de muestras de entrenamiento que se tendrá en cuenta para la clasificación. Por ejemplo, si k es 1 el algoritmo tomará como referencia la muestra más cercana, si k es 5 el algoritmo tomará las 5 muestras más cercanas y la clase asignada será la clase más abundante en estas 5 muestras de entrenamiento.
+
+## Fortalezas y debilidades: 
+
+| Fortalezas | Debilidades |
+| -- | -- |
+| Simple y efectivo | Dificulta el encontrar relaciones entre las características ya que no crea un modelo en sí |
+| No realiza susposiciones sobre la distribución de los datos | Requiere mucha memoria interna |
+| Rapida fase de entrenamiento | Lenta fase de clasificación |
+| -- | Las características nominales y la falta de datos (Na) requiere un tratamiento adicional |
+
+Fuente: [@lantz]
+
+# Transformación de los datos
+*2. Desarrollar dos funciones en R:*
+
+## One-hot
+Función que implementa la codificación "one-hot" (one-hot encoding) de las secuencias:
+
+```{r funcion_transf_one_hot}
+# -------------------- Función para transformación one hot
+
+library(stringr)
+library(dummy)
+
+onehotpept <- function(pept){
+  # primero separamos las secuencias peptidocas por aminoacidos:
+  pept_seq <- as.data.frame(str_split_fixed(pept$sequence, "", nchar(pept[1,1])))
+  # Luego las transformamos en 0 y 1 con la función dummy(). 
+  return(data.frame(dummy(pept_seq)))
+}
+```
+
+## Matriz de substitución BLOSUM62
+
+Función que implementa la transformación basada en una matriz de substitución BLOSUM62 de las secuencias.
+
+```{r funcion_transf_blosum}
+# -------------------- Función para transformación BLOSUM
+
+blosum_transf <- function(pept,blosum62){
+  
+  # Dividimos cada peptido por aminoácidos:
+  pept_seq <- as.data.frame(str_split_fixed(pept[,1], "", nchar(pept[1,1])))
+  
+  # Determinamos dos variables: 
+  ## len1: largo de las secuencias peptidicas
+  ## len 2: numero de columnas (cantidad de peptidos que tenemos que transformar)
+  len1 <- length(pept_seq)
+  len2 <- length(pept_seq[,1])
+  
+  # Creamos una lista vacía:
+  allpeptides <- list()
+  
+  # Para cada peptido:
+  for(j in 1:len2){
+    
+    # Creamos otra lista vacía donde se guardarán las probabilidades de el aminoácido determinado:
+    peptide <- list()
+    for(i in 1:len1){
+      vec <- as.list(blosum62[pept_seq[j,i],])
+      peptide <- append(peptide, vec)
+      }
+    allpeptides[[j]] <- peptide  # Vamos guardando cada peptido transformado en la lista vacía.
+    }
+  
+  #Transformamos la lista en un dataframe:
+  df <- do.call(rbind.data.frame,allpeptides)
+  return(data.frame(df))
+}
+```
+
+* *En caso de no se haya implementado alguna de las funciones de codificación anteriores, se puede acceder a los datos ya transformados cargando el fichero 'peptidos_transf_one_hot.csv' o 'peptidos_transf_BLOSUM62.csv'.*
+
+# Script de clasificación k-NN
+
+*3. Desarrollar un script en R que implemente un clasificador knn. El script debe realizar los siguientes apartados:*
+
+a) Leer los datos peptidos.csv y hacer una breve descripción de ellos. Incluir en esta descripción el patrón de cada clase de péptido mediante la representación de su secuencia logo (https: //en.wikipedia.org/wiki/Sequence_logo). Para realizar esta representación se puede usar el paquete `ggseqlogo` descargable desde github.
+
+```{r datos}
+# -------------------- a) Lectura y descripción de los datos
+
+# INPUT 
+# (este será el input del script, se podría cambiar por otros datos manteniendo el siguiente formato):
+
+peptidos <- 'peptidos.csv'
+
+# Lectura y visualización de los datos:
+pept <- read.csv(peptidos, sep = ';', header  = TRUE)
+print("Input y formato del string:")
+head(pept)
+
+# Descripción de los datos:
+str(pept)
+
+# Tenemos que pasar la columnas "label" a factor:
+pept$label <- factor(pept$label, levels = c("SB", "NB"), labels = c("SB", "NB"))
+
+# -------------------- Patrón (secuencia logo con ggseqlogo)
+
+library(ggseqlogo)
+library(ggplot2)
+
+# Creamos la representación con ggseqlogo(), mostrando las probabilidades de que aparezcan los aminoacidos en cada posición del péptido. Los aminoácidos que aparecen en la parte superior del gráfico y con mayor tamaño són los más probables en cada posición. Por ejemplo, en la segunda posición predominan los aminoacidos L (leucina) y M (metionina), mientras que en la última predomina la V (valina). 
+
+#jpeg(file="results/seq_logo_representation.jpeg")
+ggseqlogo(pept[,1], method="prob")
+#dev.off()
+```
+
+b) Para cada forma de representar los datos: one-hot encoding o transformación basada en una matriz de substitución BLOSUM62, realizar la implementación del algoritmo knn, con los siguientes pasos:
+
+i. Transformar las secuencias de aminoácidos en vectores numéricos usando la función de transformación desarrollada anteriormente.
+
+```{r algoritmo_k_NN}
+# -------------------- b) ALGORITMO k-NN
+#                      --
+# -------------------- i. Transformación de los datos
+#                      --
+# -------------------- ONE-HOT encoding 
+
+# Aplicamos la función onehotpept():
+
+pept_onehot <- onehotpept(pept)
+
+# Convertimos los caracteres a vectores numéricos:
+pept_onehot <- data.frame(lapply(pept_onehot, as.integer))
+
+# Unimos los labels al nuevo data frame:
+pept_trans_onehot <- cbind(pept[,2], pept_onehot)
+
+#Cambiamos nombres de las columnas:
+coln <- vector()
+len <- length(pept_trans_onehot)-1
+for (i in 1:len){
+  coln <- append(coln, paste("V",i))
+  colnames(pept_trans_onehot) <- c("label", coln)
+}
+
+#                      --
+# -------------------- BLOSUM62 
+
+# Importamos la matriz de substitución  BLOSUM62:
+blosum <- read.csv('BLOSUM62_probabilities.csv', sep=";", dec=",", header=TRUE, row.names=1)
+
+# Transformamos las secuencias peptidicas:
+blosum62 <- blosum_transf(pept = pept, blosum62 = blosum)
+
+# Convertimos los caracteres en numeros: 
+blosum62 <- data.frame(lapply(blosum62, as.numeric))
+
+# Unimos la columna label al dataset blosum62 y cambiamos el nombre de dicha columna:
+pept_trans_blosum <- cbind(pept$label, blosum62)
+colnames(pept_trans_blosum)[1] <- c("label") 
+```
+
+ii. Utilizando la semilla aleatoria 123, separar los datos en dos partes, una parte para training (67%) y una parte para test (33%).
+
+```{r train_test}
+# -------------------- ii. Separación train y test
+#                      --
+# -------------------- ONE HOT 
+
+# Semilla aleatoria:
+set.seed(123)
+
+# Cogemos el 67% del dataset pept_trans_onehot:
+oh_split <- sort(sample(nrow(pept_trans_onehot), nrow(pept_trans_onehot)*0.67))
+
+# Separación de los datos peptídicos: 
+oh_train <- pept_trans_onehot[oh_split, -1]
+oh_test <- pept_trans_onehot[-oh_split, -1]
+
+# Creamos el train y test set solamente de la columna "label":
+oh_train_label <- pept_trans_onehot[oh_split, 1]
+oh_test_label <- pept_trans_onehot[-oh_split, 1]
+
+
+#                      --
+# -------------------- BLOSUM62 
+
+# Semilla aleatoria:
+set.seed(123)
+
+# Cogemos el 67% del dataset pept_trans_blosum:
+b_split <- sort(sample(nrow(pept_trans_blosum), nrow(pept_trans_blosum)*0.67))
+
+# Separación de los datos peptídicos:
+b_train <- pept_trans_blosum[b_split, -1]
+b_test <- pept_trans_blosum[-b_split, -1]
+
+# Creamos el train y test set solamente de la columna "label":
+b_train_label <- pept_trans_blosum[b_split, 1]
+b_test_label <- pept_trans_blosum[-b_split, 1]
+```
+
+iii. Utilizar un knn (k = 3, 5, 7, 11) basado en el training para predecir que péptidos del test interaccionan o no con el MHCI. Además, realizar la curva ROC para cada k incluyendo el valor de area bajo la curva (AUC).
+
+```{r predicción}
+# -------------------- iii. Predicción
+
+library(class)
+library(gmodels)
+library(ROCR)
+
+k = c(3,5,7,11)
+ct_oh <- list()
+ct_bl <- list()
+auc_oh <- c()
+auc_bl <- c()
+
+for (i in k){
+  
+  # 1. Obtenemos la predicción con el algoritmo k-NN para cada valor de k:
+  
+  ##### ONE HOT ######
+  oh_prediction <- knn(train = oh_train,
+                     test = oh_test,
+                     cl = oh_train_label,
+                     k = i,
+                     prob = TRUE)
+  ##### BLOSUM62 ######
+  bl_prediction <- knn(train = b_train,
+                     test = b_test,
+                     cl = b_train_label,
+                     k = i,
+                     prob = TRUE)
+  
+  # 2. Obtenemos las CrossTables y las guardamos en una lista:
+  
+  ##### ONE HOT ######
+  ct_k <- CrossTable(x = oh_test_label,
+           y = oh_prediction,
+           prop.chisq = FALSE)
+  ct_oh <- append(ct_oh,list(ct_k))
+  
+  ##### BLOSUM62 ######
+  ct_b <- CrossTable(x = b_test_label,
+           y = bl_prediction,
+           prop.chisq = FALSE)
+  ct_bl <- append(ct_bl,list(ct_b))
+  
+  # 3. Curva ROC:
+  
+  ##### ONE HOT ######
+  pred_oh <- prediction(predictions = attributes(oh_prediction)$prob,
+                   labels = oh_test_label)
+  perf_oh <- performance(pred_oh, measure = "tpr", x.measure = "fpr")
+  
+  ##### BLOSUM62 ######
+  pred_bl <- prediction(predictions = attributes(bl_prediction)$prob,
+                   labels = b_test_label)
+  perf_bl <- performance(pred_bl, measure = "tpr", x.measure = "fpr")
+  
+  ## Hacemos los graficos y los exportamos a jpeg en la carpeta "resultados".  
+  
+  ##### ONE HOT ######
+  plotname_oh <- paste("One Hot ROC curve, k = ",i,sep="")
+
+  #jpeg(file=paste("results/OH_ROC_k_", i, ".jpeg",sep=""))
+  plot(perf_oh, main = plotname_oh, col = "blue", lwd = 3)
+  abline(a = 0, b = 1, lwd = 2, lty = 2)
+  #dev.off()
+  
+  ##### BLOSUM62 ######
+  plotname_bl <- paste("BLOSUM62 ROC curve, k = ",i,sep="")
+
+  #jpeg(file=paste("results/BL_ROC_k_", i, ".jpeg",sep=""))
+  plot(perf_bl, main = plotname_bl, col = "blue", lwd = 3)
+  abline(a = 0, b = 1, lwd = 2, lty = 2)
+  #dev.off()
+  
+  # 4. Calculamos el valor AUC:
+  
+  ##### ONE HOT ######
+  perf_auc_oh <- performance(pred_oh, measure = "auc")
+  auc_value_oh <- unlist(perf_auc_oh@y.values)
+  auc_oh <- append(auc_oh, auc_value_oh)
+  
+  ##### BLOSUM62 ######
+  perf_auc_bl <- performance(pred_bl, measure = "auc")
+  auc_value_bl <- unlist(perf_auc_bl@y.values)
+  auc_bl <- append(auc_bl, auc_value_bl)
+}
+
+# Renombramos las listas crosstable y AUC:
+names_oh <- c()
+names_bl <- c()
+auc_n_oh <- c()
+auc_n_bl <- c()
+
+for (i in k){
+
+  names_oh <- append(names_oh,paste("crosstab_oh_k", i, sep=""))
+  names_bl <- append(names_bl,paste("crosstab_bl_k", i, sep=""))
+  names(ct_oh) <- names_oh
+  names(ct_bl) <- names_bl
+  
+  auc_n_oh <- append(auc_n_oh,paste("AUC_oh_k", i, sep=""))
+  auc_n_bl <- append(auc_n_bl,paste("AUC_bl_k", i, sep=""))
+  names(auc_oh) <- auc_n_oh
+  names(auc_bl) <- auc_n_bl
+}
+```
+
+iv. Comentar los resultados de la clasificación en función del número de falsos positivos, falsos negativos, error de clasificación y del valor de AUC obtenidos para los diferentes valores de k. La clase que será asignada como positiva es la SB.
+
+```{r resultados}
+# -------------------- iv. Resultados
+
+# Primero desarrollo una formula para extraer los valores de los falsos positivos y negativos de las crosstable, una para cada valor de "k", y tanto de la transformación one hot como de la BLOSUM:
+
+#### One hot:
+CT_OH_values <- function(file,column){
+  value_oh <- c(ct_oh$crosstab_oh_k3$t[file,column],
+                ct_oh$crosstab_oh_k5$t[file,column],
+                ct_oh$crosstab_oh_k7$t[file,column],
+                ct_oh$crosstab_oh_k11$t[file,column])
+  valnames <- c()
+  for(i in k){
+    names <- paste('values_one_hot_k',i,sep='')
+    valnames <- append(valnames,names)
+    }
+  names(value_oh) <- valnames
+  return(value_oh)
+}
+
+#### Blosum62:
+CT_BL_values <- function(file,column){
+  value_bl <- c(ct_bl$crosstab_bl_k3$t[file,column],
+                ct_bl$crosstab_bl_k5$t[file,column],
+                ct_bl$crosstab_bl_k7$t[file,column],
+                ct_bl$crosstab_bl_k11$t[file,column])
+  valnames <- c()
+  for(i in k){
+    names <- paste('values_blosum_k',i,sep='')
+    valnames <- append(valnames,names)
+    }
+  names(value_bl) <- valnames
+  return(value_bl)
+}
+
+# Extraemos los falsos positivos y negativos:
+
+### One Hot:
+fp_oh <- CT_OH_values(2,1) # Falsos positivos
+fn_oh <- CT_OH_values(1,2) # Falsos negativos
+
+### Blosum62: 
+fp_bl <- CT_BL_values(2,1) # Falsos positivos
+fn_bl <- CT_BL_values(1,2) # Falsos negativos
+
+# A continuación desarrollamos una formula para calcular el error de clasificación (dividiendo la suma de los falsos positivos y negativos entre todos los casos de predicción). 
+
+error_rate <- function(tp,tn,fp,fn){
+  return((fp + fn)/(tp+tn+fp+fn))
+}
+
+# Error de clasificación para One Hot:
+tp_oh <- CT_OH_values(1,1)
+tn_oh <- CT_OH_values(2,2)
+
+error_oh <- error_rate(tp = tp_oh,
+           tn= tn_oh,
+           fp = fp_oh,
+           fn = fn_oh)
+
+# Error de clasificación para BLOSUM62:
+tp_bl <- CT_BL_values(1,1)
+tn_bl <- CT_BL_values(2,2)
+
+error_bl <- error_rate(tp = tp_bl,
+           tn= tn_bl,
+           fp = fp_bl,
+           fn = fn_bl)
+
+# Unimos los resultados en en un dataframe:
+
+one_hot_results <- data.frame('FP' = fp_oh,
+                              'FN' = fn_oh,
+                              'Error_rate' = error_oh,
+                              'AUC' = auc_oh)
+
+blosum_results <- data.frame('FP' = fp_bl,
+                              'FN' = fn_bl,
+                              'Error_rate' = error_bl,
+                              'AUC' = auc_bl)
+```
+
+**Resultados:**
+
+-  **One hot**: para este tipo de transformación se observa que el valor de k ideal es k=7, ya que detecta más falsos positivos que k=5, pero su valor de AUC es más elevado (0.92), además de presentar ambas k un error de clasificación más bajo que el resto. El valor de k con mayor AUC es k=11, pero tambien es cierto que es el que mayor valor de falsos positivos muestra, y que su error de clasificación es algo más alto.
+```{r}
+one_hot_results
+```
+
+- **BlOSUM62**: En cuanto a la transformación con BLOSUM62 el criterio es parecido, los valores de k que mejores resultados dan son k=5 y k=7, siendo k=7 algo mejor en cuanto a AUC, pero menos preciso en cuanto a los falsos positivos. Al igual que One hot, el mayor AUC es con k = 11. 
+```{r}
+blosum_results
+```
+
+c) Comparar los resultados de clasificación obtenidos con las dos técnicas de representación de péptidos, one-hot encoding y transformación basada en una matriz de substitución BLOSUM62.
+
+**Comparación de resultados según ambas técnicas de representación y conclusión**
+
+One hot tiene menor error de clasificación, ya que detecta menos falsos negativos y el error rato calculado es menos en comparación con blosum. Los valores de AUC son mejores también para la representación One not. En ambas transformaciones el valor de AUC más elevado es el de **k=11**, pero a la vez es el que mayores falsos positivos detecta. Por estos motivos la conclusión de este estudio es que **One Hot proporciona una predicción mediante el algoritmo k-NN más precisa** que la transformación BLOSUM62. 
+
+
+# Bibliography
+
