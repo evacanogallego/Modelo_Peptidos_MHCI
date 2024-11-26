@@ -1,0 +1,188 @@
+
+R version 4.4.2 (2024-10-31) -- "Pile of Leaves"
+Copyright (C) 2024 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin20
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> # Cleaning ---------------------------------------
+> rm(list = ls())
+> cat("\014")
+> gc()
+         used (Mb) gc trigger (Mb) limit (Mb) max used (Mb)
+Ncells 297195 15.9     700571 37.5         NA   486277   26
+Vcells 517326  4.0    8388608 64.0      16384  1965026   15
+> 
+> # Libraries ---------------------------------------
+> library(dplyr)
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+> library(data.table)
+
+Attaching package: ‘data.table’
+
+The following objects are masked from ‘package:dplyr’:
+
+    between, first, last
+
+> library(stringr)
+> library(dummy)
+dummy 0.1.3
+dummyNews()
+> library(tidyverse)
+── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+✔ forcats   1.0.0     ✔ readr     2.1.5
+✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+✔ purrr     1.0.2     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ data.table::between() masks dplyr::between()
+✖ dplyr::filter()       masks stats::filter()
+✖ data.table::first()   masks dplyr::first()
+✖ lubridate::hour()     masks data.table::hour()
+✖ lubridate::isoweek()  masks data.table::isoweek()
+✖ dplyr::lag()          masks stats::lag()
+✖ data.table::last()    masks dplyr::last()
+✖ lubridate::mday()     masks data.table::mday()
+✖ lubridate::minute()   masks data.table::minute()
+✖ lubridate::month()    masks data.table::month()
+✖ lubridate::quarter()  masks data.table::quarter()
+✖ lubridate::second()   masks data.table::second()
+✖ purrr::transpose()    masks data.table::transpose()
+✖ lubridate::wday()     masks data.table::wday()
+✖ lubridate::week()     masks data.table::week()
+✖ lubridate::yday()     masks data.table::yday()
+✖ lubridate::year()     masks data.table::year()
+ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+> library(caret)
+Loading required package: lattice
+
+Attaching package: ‘caret’
+
+The following object is masked from ‘package:purrr’:
+
+    lift
+
+> library(class)
+> library(kknn)
+
+Attaching package: ‘kknn’
+
+The following object is masked from ‘package:caret’:
+
+    contr.dummy
+
+> 
+> # Arguments ----------------------------------------
+> # path <- "/Users/evacanogallego/Desktop/Proyectos_ML"
+> # proj <- "Modelo_Peptidos_MHCI"
+> 
+> # args = commandArgs(trailingOnly=TRUE)
+> # print(args)
+> # path = args[[1]]
+> # proj = args[[2]]
+> 
+> args <- commandArgs(trailingOnly = TRUE)
+> args_list <- list()
+> for (arg in args) {
++   key_value <- strsplit(arg, "=")[[1]]
++   key <- key_value[1]
++   value <- key_value[2]
++   value <- gsub("'", "", value)
++   args_list[[key]] <- value
++ }
+> 
+> list2env(args_list, envir = .GlobalEnv)
+<environment: R_GlobalEnv>
+> 
+> print(path)
+[1] "/Users/evacanogallego/Desktop/Proyectos_ML"
+> print(proj)
+[1] "Modelo_Peptidos_MHCI"
+> 
+> # Functions ----------------------------------------
+> 
+> # Paths --------------------------------------------
+> pathProj <- file.path(path, proj)
+> pathData <- file.path(pathProj, "00_datos")
+> pathTmp <- file.path(pathProj, "tmp")
+> pathOutput <- file.path(pathProj, "01_Modelos/00_datos")
+> 
+> # Code ---------------------------------------------
+> datos <- fread(file.path(pathData, "peptidos.csv"), sep=";", data.table = F, stringsAsFactors = F)
+> blosum <- fread(file.path(pathData, "BLOSUM62_probabilities.csv"), sep=";", data.table = F, stringsAsFactors = F)
+> 
+> ### transforming data to dummies
+> 
+> datos_tr <- datos %>%
++   mutate(aa = str_split(sequence, "")) %>% # Dividir la cadena en caracteres
++   unnest_wider(aa, names_sep = "_") 
+> 
+> columns <- grep("aa", names(datos_tr), value = T)
+> datos_dummies <- dummy(datos_tr[,columns])
+> datos_dummies <- cbind(datos[,c("sequence", "label")], datos_dummies)
+> datos_dummies$id <- 1:nrow(datos_dummies)
+> 
+> ### creating target
+> 
+> datos_dummies <- datos_dummies %>% mutate(target = ifelse(label == "SB", 1, 0))
+> master <- datos_dummies %>% select(id, sequence, label, target)
+> saveRDS(master, file.path(pathTmp, "master.rds"))
+> datos_dummies$sequence=NULL
+> datos_dummies$label=NULL
+> datos_dummies <- datos_dummies %>% select(id, target, everything())
+> 
+> ### splitting data into train-test
+> 
+> set.seed(123)
+> 
+> trainIndex <- createDataPartition(datos_dummies$id, p = 0.7, list = FALSE)
+> train <- datos_dummies[trainIndex, ]
+> test <- datos_dummies[-trainIndex, ]
+> 
+> table(train$target)
+
+   0    1 
+5560 5528 
+> table(test$target)
+
+   0    1 
+2360 2392 
+> 
+> # Saving train test data
+> 
+> saveRDS(train, file.path(pathOutput, "train_input_modelo.rds"))
+> saveRDS(test, file.path(pathOutput, "test_input_modelo.rds"))
+> 
+> # Cleaning ---------------------------------------
+> rm(list = ls())
+> cat("\014")
+> gc()
+          used  (Mb) gc trigger  (Mb) limit (Mb) max used  (Mb)
+Ncells 2286447 122.2    4958734 264.9         NA  4958734 264.9
+Vcells 3830695  29.3   12255594  93.6      16384 12247886  93.5
+> 
+> proc.time()
+   user  system elapsed 
+  8.371   0.871  11.384 

@@ -14,8 +14,21 @@ library(class)
 library(kknn)
 
 # Arguments ----------------------------------------
-path <- "~/Desktop/Proyectos_ML"
-proj <- "Modelo_Peptidos_MHCI"
+# path <- "/Users/evacanogallego/Desktop/Proyectos_ML"
+# proj <- "Modelo_Peptidos_MHCI"
+
+args <- commandArgs(trailingOnly = TRUE)
+args_list <- list()
+for (arg in args) {
+  key_value <- strsplit(arg, "=")[[1]]
+  key <- key_value[1]
+  value <- key_value[2]
+  value <- gsub("'", "", value)
+  args_list[[key]] <- value
+}
+
+list2env(args_list, envir = .GlobalEnv)
+print(args_list)
 
 # Functions ----------------------------------------
 
