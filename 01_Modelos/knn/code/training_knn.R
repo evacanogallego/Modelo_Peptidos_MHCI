@@ -12,7 +12,7 @@ library(kknn)
 
 # Arguments ----------------------------------------
 path <- "~/Desktop/Proyectos_ML"
-proj <- "Pec_1"
+proj <- "Modelo_Peptidos_MHCI"
 
 # Functions ----------------------------------------
 functions <- list.files(file.path(path, "functions"), full.names = T)

@@ -9,7 +9,8 @@ library(data.table)
 
 # Arguments ----------------------------------------
 path <- "~/Desktop/Proyectos_ML"
-proj <- "Pec_1"
+proj <- "Modelo_Peptidos_MHCI"
+algorithm <- "knn"
 
 # Functions ----------------------------------------
 functions <- list.files(file.path(path, "functions"), full.names = T)
@@ -19,15 +20,20 @@ lapply(functions, source)
 pathProj <- file.path(path, proj)
 pathData <- file.path(pathProj, "01_Modelos/knn/output")
 pathTmp <- file.path(pathProj, "tmp")
-pathOutput <- file.path(pathProj, "02_Metricas/output")
+pathOutput <- file.path(pathProj, "02_Metricas/output", algorithm)
+pathDataModel <- file.path(pathProj, "01_Modelos/00_datos")
+
+dir.create(pathOutput, recursive = T, showWarnings = F)
 
 # Code ---------------------------------------------
 predicciones <- readRDS(file.path(pathData, "scores_model_output.rds"))
 master <- readRDS(file.path(pathTmp, "master.rds"))
+test <- readRDS(file.path(pathDataModel, "test_input_modelo.rds"))
+target <- test$target
 
-metrics <- data.frame(rbindlist(lapply(predicciones, function(x) metricsBinnaryPred(target, x))))
+metrics <- data.frame(rbindlist(apply(predicciones[,!names(predicciones) %in% "id"], 2, function(x) metricsBinnaryPred(target, x))))
 metrics <- round(metrics, 3)
-metrics$model <- paste0("knn_k", k_lista)
+metrics$model <- names(predicciones[,!names(predicciones) %in% "id"])
 metrics <- metrics %>% select(model, everything())
 
 metrics_ordenado <- list()
@@ -42,4 +48,14 @@ for(metric in names(metrics)[2:ncol(metrics)]){
 metrics_ordenado <- do.call(cbind, metrics_ordenado)
 names(metrics_ordenado) <- names(metrics)[2:ncol(metrics)]
 
+# Saving ---------------------------------------
+saveRDS(metrics, file.path(pathOutput, "metrics_kpis.rds"))
+write.csv2(metrics, file.path(pathOutput, "metrics_kpis.csv"), row.names = F)
 
+saveRDS(metrics_ordenado, file.path(pathOutput, "metrics_kpis_ordenado.rds"))
+write.csv2(metrics_ordenado, file.path(pathOutput, "metrics_kpis_ordenado.csv"), row.names = F)
+
+# Cleaning ---------------------------------------
+rm(list = ls())
+cat("\014")
+gc()

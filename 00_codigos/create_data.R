@@ -15,13 +15,13 @@ library(kknn)
 
 # Arguments ----------------------------------------
 path <- "~/Desktop/Proyectos_ML"
-proj <- "Pec_1"
+proj <- "Modelo_Peptidos_MHCI"
 
 # Functions ----------------------------------------
 
 # Paths --------------------------------------------
 pathProj <- file.path(path, proj)
-pathData <- file.path(pathProj, "datos")
+pathData <- file.path(pathProj, "00_datos")
 pathTmp <- file.path(pathProj, "tmp")
 pathOutput <- file.path(pathProj, "01_Modelos/00_datos")
 
@@ -40,13 +40,12 @@ datos_dummies <- dummy(datos_tr[,columns])
 datos_dummies <- cbind(datos[,c("sequence", "label")], datos_dummies)
 datos_dummies$id <- 1:nrow(datos_dummies)
 
-master <- datos_dummies %>% select(id, sequence, label)
-saveRDS(master, file.path(pathTmp, "master.rds"))
-
 ### creating target
 
-datos_dummies$sequence=NULL
 datos_dummies <- datos_dummies %>% mutate(target = ifelse(label == "SB", 1, 0))
+master <- datos_dummies %>% select(id, sequence, label, target)
+saveRDS(master, file.path(pathTmp, "master.rds"))
+datos_dummies$sequence=NULL
 datos_dummies$label=NULL
 datos_dummies <- datos_dummies %>% select(id, target, everything())
 
